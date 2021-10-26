@@ -1,0 +1,40 @@
+{
+	"name":    "@vadym.gidulian/generic-file-storage",
+	"version": "1.0.0",
+	
+	"description": "Generic file storage: stores files and their variants",
+	"keywords": [
+		"file",
+		"files",
+		"regenerate",
+		"storage",
+		"variant",
+		"variants"
+	],
+	
+	"main":  "dist/index.js",
+	"types": "dist/index.d.ts",
+	
+	"scripts": {
+		"build": "tsc",
+		"test":  "jest -i"
+	},
+	
+	"engines": {
+		"node": ">=14"
+	},
+	"os": [
+		"linux"
+	],
+	
+	"dependencies": {
+		"tiny-typed-emitter": "2.1.0",
+		"uuid":               "8.3.2"
+	},
+	"devDependencies": {
+		"@types/node": "14",
+		"@types/uuid": "8.3",
+		"jest":        "27.3",
+		"typescript":  "4.4"
+	}
+}

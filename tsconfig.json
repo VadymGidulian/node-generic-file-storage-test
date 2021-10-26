@@ -1,0 +1,32 @@
+{
+	"compilerOptions": {
+		"alwaysStrict":                       true,
+		"declaration":                        true,
+		"declarationMap":                     true,
+		"esModuleInterop":                    true,
+		"exactOptionalPropertyTypes":         true,
+		"forceConsistentCasingInFileNames":   true,
+		"module":                             "CommonJS",
+		"noErrorTruncation":                  true,
+		"noFallthroughCasesInSwitch":         true,
+		"noImplicitAny":                      true,
+		"noImplicitOverride":                 true,
+		"noImplicitReturns":                  true,
+		"noImplicitThis":                     true,
+		"noPropertyAccessFromIndexSignature": true,
+		"noUncheckedIndexedAccess":           true,
+		"noUnusedLocals":                     true,
+		"noUnusedParameters":                 true,
+		"rootDir":                            "src",
+		"sourceMap":                          true,
+		"outDir":                             "dist",
+		"strictBindCallApply":                true,
+		"strictFunctionTypes":                true,
+		"strictNullChecks":                   true,
+		"strictPropertyInitialization":       true,
+		"target":                             "ES2019"
+	},
+	"files": [
+		"./src/index.ts"
+	]
+}
