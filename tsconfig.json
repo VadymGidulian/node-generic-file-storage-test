@@ -4,7 +4,6 @@
 		"declaration":                        true,
 		"declarationMap":                     true,
 		"esModuleInterop":                    true,
-		"exactOptionalPropertyTypes":         true,
 		"forceConsistentCasingInFileNames":   true,
 		"module":                             "CommonJS",
 		"noErrorTruncation":                  true,

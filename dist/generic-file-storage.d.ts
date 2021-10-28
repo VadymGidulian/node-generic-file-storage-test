@@ -23,7 +23,7 @@ export interface GenerateAllProgressEvent {
     /**
      * Last successfully processed file id.
      */
-    id: string;
+    id?: string;
     /**
      * Number of successfully processed files.
      */
@@ -37,18 +37,18 @@ interface GenericFileStorageEvents {
     [EVENT.GENERATE_PROGRESS]: (ev: GenerateProgressEvent) => void;
     [EVENT.GENERATE_ALL_PROGRESS]: (ev: GenerateAllProgressEvent) => void;
 }
-export declare type Generator = (id: string, srcPath: string, destPath: string, variantDescription: VariantDescription) => Promise<void>;
+export declare type Generator<V> = (id: string, srcPath: string, destPath: string, variantDescription: V) => Promise<void>;
 export interface VariantDescription {
     /**
      * Variant name.
      */
     name: string;
 }
-declare type Variants = VariantDescription[] | ((metadata: fileUtils.FileMetadata) => VariantDescription[]);
+declare type Variants<M, V> = V[] | ((metadata: M) => V[]);
 /**
  * Storage interface object
  */
-export default class GenericFileStorage extends TypedEmitter<GenericFileStorageEvents> {
+export default class GenericFileStorage<M extends fileUtils.FileMetadata = fileUtils.FileMetadata, V extends VariantDescription = VariantDescription> extends TypedEmitter<GenericFileStorageEvents> {
     #private;
     constructor({ path, variants, mediaTypes }?: {
         /**
@@ -58,7 +58,7 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
         /**
          * File variants.
          */
-        variants?: Variants;
+        variants?: Variants<M, V>;
         /**
          * Custom media types used for file format detection.
          */
@@ -71,19 +71,19 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
      */
     saveFile(buffer: Buffer, { beforeSave, uuid }?: {
         /**
-         * Called before file will be saved.
+         * Called before the file will be saved.
          * @param metadata - File's detected metadata. Metadata may be changed.
          */
         beforeSave?: ({ metadata }: {
             metadata: fileUtils.FileMetadata;
-        }) => Promise<void>;
+        }) => void | Promise<void>;
         /**
          * File's id without extension.
          */
         uuid?: string;
     }): Promise<{
         id: string;
-        metadata: fileUtils.FileMetadata;
+        metadata: M;
     }>;
     /**
      * Deletes the file and its variants.
@@ -95,7 +95,7 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
      * @param id - File's id.
      * @return File's metadata or `null` if the file does not exist.
      */
-    getFileMetadata(id: string): Promise<fileUtils.FileMetadata | null>;
+    getFileMetadata(id: string): Promise<M | null>;
     /**
      * Gets file's path.
      * @param id       - File's id.
@@ -112,7 +112,7 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
      * @param generator - A function to create file's variant.
      * @param clean     - Remove existing variants before?
      */
-    generateFileVariants(id: string, generator: Generator, { clean }?: {
+    generateFileVariants(id: string, generator: Generator<V>, { clean }?: {
         clean?: boolean;
     }): Promise<void>;
     /**
@@ -120,7 +120,7 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
      * @param generator - A function to create file's variant.
      * @param clean     - Remove existing variants before?
      */
-    generateAllFilesVariants(generator: Generator, { clean }?: {
+    generateAllFilesVariants(generator: Generator<V>, { clean }?: {
         clean?: boolean;
     }): Promise<void>;
 }

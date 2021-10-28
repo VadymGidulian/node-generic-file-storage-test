@@ -29,7 +29,7 @@ var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (
     if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
     return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
 };
-var _GenericFileStorage_path, _GenericFileStorage_variants, _GenericFileStorage_mediaTypes;
+var _GenericFileStorage_path, _GenericFileStorage_variants, _GenericFileStorage_mediaTypes, _GenericFileStorage_isRegeneratingAll;
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs = __importStar(require("fs/promises"));
 const path = __importStar(require("path"));
@@ -46,6 +46,7 @@ class GenericFileStorage extends tiny_typed_emitter_1.TypedEmitter {
         _GenericFileStorage_path.set(this, void 0);
         _GenericFileStorage_variants.set(this, void 0);
         _GenericFileStorage_mediaTypes.set(this, void 0);
+        _GenericFileStorage_isRegeneratingAll.set(this, false);
         if (!path)
             throw new Error('Path is required');
         __classPrivateFieldSet(this, _GenericFileStorage_path, path, "f");
@@ -70,7 +71,10 @@ class GenericFileStorage extends tiny_typed_emitter_1.TypedEmitter {
                 fs.writeFile(filePath, buffer),
                 fs.writeFile(metadataFilePath, JSON.stringify(metadata), 'utf8')
             ]);
-            return { id: fileName, metadata };
+            return {
+                id: fileName,
+                metadata: metadata
+            };
         }
         catch (e) {
             await Promise.all([filePath, metadataFilePath]
@@ -145,6 +149,11 @@ class GenericFileStorage extends tiny_typed_emitter_1.TypedEmitter {
         const variants = Array.isArray(__classPrivateFieldGet(this, _GenericFileStorage_variants, "f"))
             ? __classPrivateFieldGet(this, _GenericFileStorage_variants, "f")
             : __classPrivateFieldGet(this, _GenericFileStorage_variants, "f").call(this, (await this.getFileMetadata(id)));
+        this.emit("generateProgress" /* GENERATE_PROGRESS */, {
+            id,
+            ready: generatedVariants,
+            total: variants.length
+        });
         for (const variantDescription of variants) {
             const destPath = getFilePath(__classPrivateFieldGet(this, _GenericFileStorage_path, "f"), id, variantDescription.name);
             await generator(id, srcPath, destPath, variantDescription);
@@ -162,30 +171,42 @@ class GenericFileStorage extends tiny_typed_emitter_1.TypedEmitter {
      * @param clean     - Remove existing variants before?
      */
     async generateAllFilesVariants(generator, { clean = false } = {}) {
-        const ids = [];
-        for (const hash1 of await fs.readdir(__classPrivateFieldGet(this, _GenericFileStorage_path, "f"))) {
-            const hash1DirPath = path.join(__classPrivateFieldGet(this, _GenericFileStorage_path, "f"), hash1);
-            for (const hash2 of await fs.readdir(hash1DirPath)) {
-                const hash2DirPath = path.join(hash1DirPath, hash2);
-                const fileNames = (await fs.readdir(hash2DirPath))
-                    .filter(fileName => /^\w{8}-\w{4}-\w{4}-\w{4}-\w{12}\.\w+$/.test(fileName) && !fileName.endsWith('.json'));
-                ids.push(...fileNames);
+        if (__classPrivateFieldGet(this, _GenericFileStorage_isRegeneratingAll, "f"))
+            return;
+        __classPrivateFieldSet(this, _GenericFileStorage_isRegeneratingAll, true, "f");
+        try {
+            const ids = [];
+            for (const hash1 of await fs.readdir(__classPrivateFieldGet(this, _GenericFileStorage_path, "f"))) {
+                const hash1DirPath = path.join(__classPrivateFieldGet(this, _GenericFileStorage_path, "f"), hash1);
+                for (const hash2 of await fs.readdir(hash1DirPath)) {
+                    const hash2DirPath = path.join(hash1DirPath, hash2);
+                    const fileNames = (await fs.readdir(hash2DirPath))
+                        .filter(fileName => /^\w{8}-\w{4}-\w{4}-\w{4}-\w{12}\.\w+$/.test(fileName) && !fileName.endsWith('.json'));
+                    ids.push(...fileNames);
+                }
             }
-        }
-        let processed = 0;
-        for (const id of ids) {
-            await this.generateFileVariants(id, generator, { clean });
-            processed++;
+            let processed = 0;
             this.emit("generateAllProgress" /* GENERATE_ALL_PROGRESS */, {
-                id,
                 ready: processed,
                 total: ids.length
             });
+            for (const id of ids) {
+                await this.generateFileVariants(id, generator, { clean });
+                processed++;
+                this.emit("generateAllProgress" /* GENERATE_ALL_PROGRESS */, {
+                    id,
+                    ready: processed,
+                    total: ids.length
+                });
+            }
+        }
+        finally {
+            __classPrivateFieldSet(this, _GenericFileStorage_isRegeneratingAll, false, "f");
         }
     }
 }
 exports.default = GenericFileStorage;
-_GenericFileStorage_path = new WeakMap(), _GenericFileStorage_variants = new WeakMap(), _GenericFileStorage_mediaTypes = new WeakMap();
+_GenericFileStorage_path = new WeakMap(), _GenericFileStorage_variants = new WeakMap(), _GenericFileStorage_mediaTypes = new WeakMap(), _GenericFileStorage_isRegeneratingAll = new WeakMap();
 ;
 function getHash(id) {
     const [name] = parseId(id);

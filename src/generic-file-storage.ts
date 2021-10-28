@@ -31,7 +31,7 @@ export interface GenerateAllProgressEvent {
 	/**
 	 * Last successfully processed file id.
 	 */
-	id: string;
+	id?: string;
 	/**
 	 * Number of successfully processed files.
 	 */
@@ -48,11 +48,11 @@ interface GenericFileStorageEvents {
 }
 
 
-export type Generator = (
+export type Generator<V> = (
 	id:                 string,
 	srcPath:            string,
 	destPath:           string,
-	variantDescription: VariantDescription
+	variantDescription: V
 ) => Promise<void>;
 
 
@@ -63,19 +63,23 @@ export interface VariantDescription {
 	name: string;
 }
 
-type Variants = VariantDescription[]
-	| ((metadata: fileUtils.FileMetadata) => VariantDescription[]);
+type Variants<M, V> = V[] | ((metadata: M) => V[]);
 
 
 
 /**
  * Storage interface object
  */
-export default class GenericFileStorage extends TypedEmitter<GenericFileStorageEvents> {
+export default class GenericFileStorage<
+		M extends fileUtils.FileMetadata = fileUtils.FileMetadata,
+		V extends VariantDescription     = VariantDescription
+	> extends TypedEmitter<GenericFileStorageEvents> {
 	
 	readonly #path:       string;
-	readonly #variants:   Variants;
+	readonly #variants:   Variants<M, V>;
 	readonly #mediaTypes: fileUtils.MediaTypes;
+	
+	#isRegeneratingAll: boolean = false;
 	
 	constructor({path, variants = [], mediaTypes = {}}: {
 		/**
@@ -85,7 +89,7 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
 		/**
 		 * File variants.
 		 */
-		variants?: Variants,
+		variants?: Variants<M, V>,
 		/**
 		 * Custom media types used for file format detection.
 		 */
@@ -109,16 +113,16 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
 		buffer: Buffer,
 		{beforeSave, uuid = uuidv4()}: {
 			/**
-			 * Called before file will be saved.
+			 * Called before the file will be saved.
 			 * @param metadata - File's detected metadata. Metadata may be changed.
 			 */
-			beforeSave?: ({metadata}: {metadata: fileUtils.FileMetadata}) => Promise<void>,
+			beforeSave?: ({metadata}: {metadata: fileUtils.FileMetadata}) => void | Promise<void>,
 			/**
 			 * File's id without extension.
 			 */
 			uuid?: string
 		} = {}
-	): Promise<{id: string, metadata: fileUtils.FileMetadata}> {
+	): Promise<{id: string, metadata: M}> {
 		const metadata: fileUtils.FileMetadata = await fileUtils.identify(buffer, {mediaTypes: this.#mediaTypes});
 		
 		const fileName:         string = `${uuid}.${metadata.format}`;
@@ -134,7 +138,10 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
 				fs.writeFile(metadataFilePath, JSON.stringify(metadata), 'utf8')
 			]);
 			
-			return {id: fileName, metadata};
+			return {
+				id:       fileName,
+				metadata: metadata as M
+			};
 		} catch (e) {
 			await Promise.all([filePath, metadataFilePath]
 				.map(path => fs.rm(path, {force: true})));
@@ -164,7 +171,7 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
 	 * @param id - File's id.
 	 * @return File's metadata or `null` if the file does not exist.
 	 */
-	async getFileMetadata(id: string): Promise<fileUtils.FileMetadata | null> {
+	async getFileMetadata(id: string): Promise<M | null> {
 		const filePath: string | null = await checkPath(getFileMetadataPath(this.#path, id));
 		if (!filePath) return null;
 		
@@ -207,7 +214,7 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
 	 */
 	async generateFileVariants(
 		id:              string,
-		generator:       Generator,
+		generator:       Generator<V>,
 		{clean = false}: {clean?: boolean} = {}
 	): Promise<void> {
 		const srcPath: string | null = await this.getFilePath(id);
@@ -228,10 +235,15 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
 		const variants:          VariantDescription[] = Array.isArray(this.#variants)
 			? this.#variants
 			: this.#variants((await this.getFileMetadata(id))!);
+		this.emit(EVENT.GENERATE_PROGRESS, {
+			id,
+			ready: generatedVariants,
+			total: variants.length
+		});
 		for (const variantDescription of variants) {
 			const destPath: string = getFilePath(this.#path, id, variantDescription.name);
 			
-			await generator(id, srcPath, destPath, variantDescription);
+			await generator(id, srcPath, destPath, variantDescription as V);
 			
 			generatedVariants.push(variantDescription.name);
 			this.emit(EVENT.GENERATE_PROGRESS, {
@@ -248,33 +260,44 @@ export default class GenericFileStorage extends TypedEmitter<GenericFileStorageE
 	 * @param clean     - Remove existing variants before?
 	 */
 	async generateAllFilesVariants(
-		generator:       Generator,
+		generator:       Generator<V>,
 		{clean = false}: {clean?: boolean} = {}
 	): Promise<void> {
-		const ids: string[] = [];
+		if (this.#isRegeneratingAll) return;
 		
-		for (const hash1 of await fs.readdir(this.#path)) {
-			const hash1DirPath: string = path.join(this.#path, hash1);
+		this.#isRegeneratingAll = true;
+		try {
+			const ids: string[] = [];
 			
-			for (const hash2 of await fs.readdir(hash1DirPath)) {
-				const hash2DirPath: string = path.join(hash1DirPath, hash2);
+			for (const hash1 of await fs.readdir(this.#path)) {
+				const hash1DirPath: string = path.join(this.#path, hash1);
 				
-				const fileNames: string[] = (await fs.readdir(hash2DirPath))
-					.filter(fileName => /^\w{8}-\w{4}-\w{4}-\w{4}-\w{12}\.\w+$/.test(fileName) && !fileName.endsWith('.json'));
-				ids.push(...fileNames);
+				for (const hash2 of await fs.readdir(hash1DirPath)) {
+					const hash2DirPath: string = path.join(hash1DirPath, hash2);
+					
+					const fileNames: string[] = (await fs.readdir(hash2DirPath))
+						.filter(fileName => /^\w{8}-\w{4}-\w{4}-\w{4}-\w{12}\.\w+$/.test(fileName) && !fileName.endsWith('.json'));
+					ids.push(...fileNames);
+				}
 			}
-		}
-		
-		let processed: number = 0;
-		for (const id of ids) {
-			await this.generateFileVariants(id, generator, {clean});
 			
-			processed++;
+			let processed: number = 0;
 			this.emit(EVENT.GENERATE_ALL_PROGRESS, {
-				id,
 				ready: processed,
 				total: ids.length
 			});
+			for (const id of ids) {
+				await this.generateFileVariants(id, generator, {clean});
+				
+				processed++;
+				this.emit(EVENT.GENERATE_ALL_PROGRESS, {
+					id,
+					ready: processed,
+					total: ids.length
+				});
+			}
+		} finally {
+			this.#isRegeneratingAll = false;
 		}
 	}
 	
